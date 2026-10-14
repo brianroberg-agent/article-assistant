@@ -5,12 +5,15 @@ Unit tests for metadata extractors (NewAtlantisExtractor and LLMExtractor).
 
 import pytest
 from unittest.mock import Mock, patch
+from bs4 import BeautifulSoup
 
 from article_assistant import (
     NewAtlantisExtractor,
     LLMExtractor,
     get_extractor_for_url,
     ArticleMetadata,
+    _edition_from_header,
+    season_start_date,
 )
 
 
@@ -253,6 +256,24 @@ GRAPH_PAGE = """
 <div class="container"><h5>Related</h5><article class="card"><p><a href="https://www.thenewatlantis.com/issues/no-23-winter-2009">Winter 2009</a></p></article></div>
 </body></html>
 """
+WEB_ONLY_PAGE = """
+<html><body>
+<nav><div class="hidden lg:block"><a class="link-transition" href="https://www.thenewatlantis.com/issues/no-86-fall-2026">No. 86 – Fall 2026</a></div></nav>
+<div class="container">
+  <div class="block text-center lg:hidden"><aside><p><a href="https://www.thenewatlantis.com/article_type/essay">Essay</a></p>
+    <p>October 7, 2026</p></aside></div>
+  <div class="text-center"><h1>Are We Really on the Path to AGI?</h1></div>
+</div>
+<div class="container"><h5>Related</h5><article class="card"><p><a href="https://www.thenewatlantis.com/issues/no-85-summer-2026">Summer 2026</a></p></article></div>
+</body></html>
+"""
+WIDE_WRAPPER_PAGE = """
+<html><body>
+<main><div><h1>An Older Piece</h1></div>
+  <div class="gutenberg-content"><p>Body.</p></div>
+  <aside class="related"><a href="https://www.thenewatlantis.com/issues/no-85-summer-2026">Summer 2026</a></aside></main>
+</body></html>
+"""
 URL = "https://www.thenewatlantis.com/publications/zoning-alone"
 
 
@@ -266,6 +287,57 @@ class TestNewAtlantisGraph:
     def test_reads_the_description(self):
         md = NewAtlantisExtractor().extract_metadata(GRAPH_PAGE, URL)
         assert md["description"] == "Zoning made us lonely. The Court may end it."
+
+    def test_edition_comes_from_the_article_header_not_the_nav_or_related(self):
+        # The nav names a different (current) issue and a Related card links another;
+        # only the header aside's link is the article's own edition.
+        md = NewAtlantisExtractor().extract_metadata(GRAPH_PAGE, URL)
+        assert md["issue_number"] == "86"
+        assert md["issue_season"] == "Fall 2026"
+
+    def test_web_only_piece_has_no_edition(self):
+        md = NewAtlantisExtractor().extract_metadata(WEB_ONLY_PAGE, URL)
+        assert "issue_number" not in md and "issue_season" not in md
+
+    def test_related_aside_under_a_wide_wrapper_is_not_the_header(self):
+        # The h1's grandparent is the whole page, and the only aside below it
+        # is a Related card for another issue. The header reader must not take
+        # it; what the page-wide fallback then makes of "Summer 2026" is that
+        # fallback's own, known limitation.
+        assert (
+            _edition_from_header(BeautifulSoup(WIDE_WRAPPER_PAGE, "html.parser"))
+            is None
+        )
+
+    def test_parenthesised_issue_marker_still_works(self):
+        page = (
+            "<html><body><h1>T</h1><p>From No. 79 (Winter 2025) issue</p></body></html>"
+        )
+        md = NewAtlantisExtractor().extract_metadata(page, URL)
+        assert (md["issue_number"], md["issue_season"]) == ("79", "Winter 2025")
+
+    def test_date_falls_back_to_the_season_start(self):
+        page = (
+            "<html><body><div><div><h1>T</h1></div><aside>"
+            '<a href="https://www.thenewatlantis.com/issues/no-86-fall-2026">Fall 2026</a>'
+            "</aside></div></body></html>"
+        )
+        md = NewAtlantisExtractor().extract_metadata(page, URL)
+        assert md["date_published"] == "2026-09-01"
+
+
+class TestSeasonStartDate:
+    def test_seasons(self):
+        assert season_start_date("Spring", 2026) == "2026-03-01"
+        assert season_start_date("Summer", 2026) == "2026-06-01"
+        assert season_start_date("Fall", 2026) == "2026-09-01"
+        assert season_start_date("Autumn", 2026) == "2026-09-01"
+        # Winter YYYY is the first issue of year YYYY: meteorological winter
+        # starts the December before.
+        assert season_start_date("Winter", 2026) == "2025-12-01"
+
+    def test_unknown(self):
+        assert season_start_date("Monsoon", 2026) is None
 
 
 if __name__ == "__main__":

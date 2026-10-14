@@ -145,6 +145,29 @@ def infer_edition_number(season, year):
     return year_base_number + offset
 
 
+SEASON_START = {
+    "spring": (0, "03-01"),
+    "summer": (0, "06-01"),
+    "fall": (0, "09-01"),
+    "autumn": (0, "09-01"),
+    "winter": (-1, "12-01"),
+}
+
+
+def season_start_date(season, year):
+    """First day of an edition's meteorological season, as YYYY-MM-DD.
+
+    "Winter 2026" is the first issue of 2026 (see infer_edition_number), and
+    meteorological winter starts the previous December, so it maps to
+    2025-12-01. Returns None for an unknown season.
+    """
+    entry = SEASON_START.get(str(season).lower())
+    if entry is None:
+        return None
+    year_offset, month_day = entry
+    return f"{int(year) + year_offset}-{month_day}"
+
+
 def _jsonld_nodes(data):
     """Flatten a JSON-LD payload into its nodes (handles @graph and lists)."""
     if isinstance(data, list):
@@ -159,6 +182,44 @@ def _jsonld_nodes(data):
 def _has_type(node, wanted):
     t = node.get("@type")
     return t == wanted or (isinstance(t, list) and wanted in t)
+
+
+ISSUE_SLUG_RE = re.compile(
+    r"/issues/no-(\d+)-(winter|spring|summer|fall|autumn)-(\d{4})", re.I
+)
+
+
+def _edition_from_header(soup):
+    """The article's own edition, read from the header aside beside its h1.
+
+    On today's layout the aside sits in the block just before the h1's own
+    block (``div > aside``, then ``div > h1``); it may also be that block's
+    direct neighbour. Only those two places count: a descendant search from
+    higher up would take the first aside anywhere below, such as a "Related"
+    card for another issue.
+
+    Returns (number, "Season Year") when the aside links an issue, "none" when
+    the aside exists but links no issue (a web-only piece), and None when the
+    page has no such header (older layouts), so callers may fall back.
+    """
+    h1 = soup.find("h1")
+    if h1 is None or h1.parent is None:
+        return None
+    holder = h1.parent
+    aside = None
+    for block in (holder.find_previous_sibling(True), holder.find_next_sibling(True)):
+        if block is None:
+            continue
+        aside = block if block.name == "aside" else block.find("aside", recursive=False)
+        if aside is not None:
+            break
+    if aside is None:
+        return None
+    for link in aside.select('a[href*="/issues/"]'):
+        m = ISSUE_SLUG_RE.search(link.get("href", ""))
+        if m:
+            return m.group(1), f"{m.group(2).title()} {m.group(3)}"
+    return "none"
 
 
 class NewAtlantisExtractor(MetadataExtractor):
@@ -242,40 +303,56 @@ class NewAtlantisExtractor(MetadataExtractor):
                 author_text = re.sub(r"\s+", " ", author_text)
                 metadata["authors"] = [author_text]
 
-        # Extract issue information
-        issue_info = soup.find(string=re.compile(r"No\.\s*\d+"))
-        if issue_info:
-            issue_match = re.search(r"No\.\s*(\d+)\s*\(([^)]+)\)", issue_info)
-            if issue_match:
-                metadata["issue_number"] = issue_match.group(1)
-                metadata["issue_season"] = issue_match.group(2)
+        # The article's own edition is the link in its header aside. The
+        # page-wide search below runs only for pages without that header: the
+        # nav and Related cards also name other issues.
+        edition = _edition_from_header(soup)
+        if isinstance(edition, tuple):
+            metadata["issue_number"], metadata["issue_season"] = edition
 
-        # If no explicit issue number found, look for season-only patterns
-        if not metadata.get("issue_number"):
-            # Look for patterns like "Winter 2025", "Spring 2024", etc.
-            season_patterns = [
-                r"(Winter|Spring|Summer|Fall|Autumn)\s+(\d{4})",
-                r"(\d{4})\s+(Winter|Spring|Summer|Fall|Autumn)",
-            ]
+        if edition is None:
+            # Extract issue information
+            issue_info = soup.find(string=re.compile(r"No\.\s*\d+"))
+            if issue_info:
+                issue_match = re.search(r"No\.\s*(\d+)\s*\(([^)]+)\)", issue_info)
+                if issue_match:
+                    metadata["issue_number"] = issue_match.group(1)
+                    metadata["issue_season"] = issue_match.group(2)
 
-            for pattern in season_patterns:
-                season_match = soup.find(string=re.compile(pattern, re.IGNORECASE))
-                if season_match:
-                    match = re.search(pattern, season_match, re.IGNORECASE)
-                    if match:
-                        if match.group(1).isdigit():
-                            # Pattern: "2025 Winter"
-                            year, season = match.group(1), match.group(2)
-                        else:
-                            # Pattern: "Winter 2025"
-                            season, year = match.group(1), match.group(2)
+            # If no explicit issue number found, look for season-only patterns
+            if not metadata.get("issue_number"):
+                # Look for patterns like "Winter 2025", "Spring 2024", etc.
+                season_patterns = [
+                    r"(Winter|Spring|Summer|Fall|Autumn)\s+(\d{4})",
+                    r"(\d{4})\s+(Winter|Spring|Summer|Fall|Autumn)",
+                ]
 
-                        # Infer the issue number
-                        inferred_number = infer_edition_number(season, int(year))
-                        if inferred_number:
-                            metadata["issue_number"] = str(inferred_number)
-                            metadata["issue_season"] = f"{season} {year}"
-                        break
+                for pattern in season_patterns:
+                    season_match = soup.find(string=re.compile(pattern, re.IGNORECASE))
+                    if season_match:
+                        match = re.search(pattern, season_match, re.IGNORECASE)
+                        if match:
+                            if match.group(1).isdigit():
+                                # Pattern: "2025 Winter"
+                                year, season = match.group(1), match.group(2)
+                            else:
+                                # Pattern: "Winter 2025"
+                                season, year = match.group(1), match.group(2)
+
+                            # Infer the issue number
+                            inferred_number = infer_edition_number(season, int(year))
+                            if inferred_number:
+                                metadata["issue_number"] = str(inferred_number)
+                                metadata["issue_season"] = f"{season} {year}"
+                            break
+
+        # No datePublished: use the start of the edition's season
+        if not metadata.get("date_published") and metadata.get("issue_season"):
+            parts = metadata["issue_season"].split()
+            if len(parts) == 2 and parts[1].isdigit():
+                fallback = season_start_date(parts[0], int(parts[1]))
+                if fallback:
+                    metadata["date_published"] = fallback
 
         # Set publication name
         metadata["publication"] = "The New Atlantis"
