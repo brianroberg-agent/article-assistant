@@ -212,6 +212,19 @@ class NewAtlantisExtractor(MetadataExtractor):
             if article.get("datePublished"):
                 metadata["date_published"] = article["datePublished"]
 
+        description = None
+        for attrs in ({"property": "og:description"}, {"name": "description"}):
+            tag = soup.find("meta", attrs=attrs)
+            if tag and tag.get("content", "").strip():
+                description = tag["content"].strip()
+                break
+        if description is None:
+            page = next((n for n in nodes if _has_type(n, "WebPage")), None)
+            if page and page.get("description"):
+                description = page["description"].strip()
+        if description:
+            metadata["description"] = description
+
         # Fallback to HTML parsing if JSON-LD doesn't work
         if not metadata.get("title"):
             title_tag = soup.find("h1") or soup.find("title")

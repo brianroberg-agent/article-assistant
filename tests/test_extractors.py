@@ -263,6 +263,10 @@ class TestNewAtlantisGraph:
         assert md["date_published"] == "2026-09-08T15:39:03+00:00"
         assert md["authors"] == ["Joseph Lawler"]
 
+    def test_reads_the_description(self):
+        md = NewAtlantisExtractor().extract_metadata(GRAPH_PAGE, URL)
+        assert md["description"] == "Zoning made us lonely. The Court may end it."
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
