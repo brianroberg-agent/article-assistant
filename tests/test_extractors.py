@@ -292,6 +292,15 @@ ENTITY_PAGE = """
 URL = "https://www.thenewatlantis.com/publications/zoning-alone"
 
 
+def _page_with_issue_link(slug):
+    """A minimal page whose header aside links /issues/<slug>."""
+    return (
+        "<html><body><div><div><h1>T</h1></div><aside>"
+        f'<a href="https://www.thenewatlantis.com/issues/{slug}">label</a>'
+        "</aside></div></body></html>"
+    )
+
+
 class TestNewAtlantisGraph:
     def test_reads_title_date_and_author_from_the_graph(self):
         md = NewAtlantisExtractor().extract_metadata(GRAPH_PAGE, URL)
@@ -363,6 +372,33 @@ class TestNewAtlantisGraph:
         md = NewAtlantisExtractor().extract_metadata(page, URL)
         assert md["description"] == "Notes & Briefs \u2014 the roundup"
 
+    @pytest.mark.parametrize(
+        ("slug", "edition"),
+        [
+            ("no-38-winterspring-2013", ("38", "Winter/Spring 2013")),
+            ("no-43-summerfall-2014", ("43", "Summer/Fall 2014")),
+            ("no-49-springsummer-2016", ("49", "Spring/Summer 2016")),
+            ("no-53-summerfall-2017", ("53", "Summer/Fall 2017")),
+            ("no-56-summerfall-2018", ("56", "Summer/Fall 2018")),
+        ],
+    )
+    def test_double_issue_slugs_give_both_seasons(self, slug, edition):
+        soup = BeautifulSoup(_page_with_issue_link(slug), "html.parser")
+        assert _edition_from_header(soup) == edition
+
+    def test_cross_year_slug_still_gives_its_first_season(self):
+        soup = BeautifulSoup(
+            _page_with_issue_link("no-7-fall-2004-winter-2005"), "html.parser"
+        )
+        assert _edition_from_header(soup) == ("7", "Fall 2004")
+
+    def test_double_issue_dates_from_its_first_season(self):
+        page = _page_with_issue_link("no-43-summerfall-2014")
+        md = NewAtlantisExtractor().extract_metadata(page, URL)
+        assert md["issue_number"] == "43"
+        assert md["issue_season"] == "Summer/Fall 2014"
+        assert md["date_published"] == "2014-06-01"
+
 
 class TestSeasonStartDate:
     def test_seasons(self):
@@ -376,6 +412,10 @@ class TestSeasonStartDate:
 
     def test_unknown(self):
         assert season_start_date("Monsoon", 2026) is None
+
+    def test_double_season_uses_the_first(self):
+        assert season_start_date("Summer/Fall", 2014) == "2014-06-01"
+        assert season_start_date("Winter/Spring", 2013) == "2012-12-01"
 
 
 if __name__ == "__main__":

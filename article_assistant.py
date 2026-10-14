@@ -160,9 +160,11 @@ def season_start_date(season, year):
 
     "Winter 2026" is the first issue of 2026 (see infer_edition_number), and
     meteorological winter starts the previous December, so it maps to
-    2025-12-01. Returns None for an unknown season.
+    2025-12-01. A double issue ("Summer/Fall") starts with its first season.
+    Returns None for an unknown season.
     """
-    entry = SEASON_START.get(str(season).lower())
+    first_season = str(season).split("/")[0].strip().lower()
+    entry = SEASON_START.get(first_season)
     if entry is None:
         return None
     year_offset, month_day = entry
@@ -185,8 +187,11 @@ def _has_type(node, wanted):
     return t == wanted or (isinstance(t, list) and wanted in t)
 
 
+SEASON_WORD_RE = re.compile(r"winter|spring|summer|fall|autumn", re.I)
+# A double issue runs its seasons together in the slug, as in
+# "no-43-summerfall-2014" (the site calls it "No. 43 - Summer/Fall 2014").
 ISSUE_SLUG_RE = re.compile(
-    r"/issues/no-(\d+)-(winter|spring|summer|fall|autumn)-(\d{4})", re.I
+    r"/issues/no-(\d+)-((?:winter|spring|summer|fall|autumn)+)-(\d{4})", re.I
 )
 
 
@@ -219,7 +224,9 @@ def _edition_from_header(soup):
     for link in aside.select('a[href*="/issues/"]'):
         m = ISSUE_SLUG_RE.search(link.get("href", ""))
         if m:
-            return m.group(1), f"{m.group(2).title()} {m.group(3)}"
+            words = SEASON_WORD_RE.findall(m.group(2))
+            seasons = "/".join(word.title() for word in words)
+            return m.group(1), f"{seasons} {m.group(3)}"
     return "none"
 
 
