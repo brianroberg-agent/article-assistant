@@ -227,5 +227,42 @@ class TestSiteDetection:
         assert extractor.model_name == "claude-3.5-sonnet"
 
 
+GRAPH_PAGE = """
+<html><head>
+<meta name="description" content="Zoning made us lonely. The Court may end it.">
+<meta property="og:description" content="Zoning made us lonely. The Court may end it.">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@graph": [
+  {"@type": "Article", "@id": "https://www.thenewatlantis.com/publications/zoning-alone#article",
+   "author": {"@id": "https://www.thenewatlantis.com/authors/joseph-lawler#person"},
+   "headline": "Zoning Alone", "datePublished": "2026-09-08T15:39:03+00:00"},
+  {"@type": "WebPage", "@id": "https://www.thenewatlantis.com/publications/zoning-alone",
+   "description": "Zoning made us lonely. The Court may end it."},
+  {"@type": "Person", "@id": "https://www.thenewatlantis.com/authors/joseph-lawler#person",
+   "name": "Joseph Lawler"}
+]}
+</script></head>
+<body>
+<nav><div class="hidden lg:block"><a class="link-transition" href="https://www.thenewatlantis.com/issues/no-87-winter-2027">No. 87 – Winter 2027</a></div></nav>
+<div class="container">
+  <div class="block text-center lg:hidden"><aside><p><a href="https://www.thenewatlantis.com/article_type/essay">Essay</a></p>
+    <p><a class="link-transition" href="https://www.thenewatlantis.com/issues/no-86-fall-2026">Fall 2026</a></p></aside></div>
+  <div class="text-center"><h1>Zoning Alone</h1></div>
+</div>
+<div class="container"><div class="gutenberg-content"><p>Body.</p></div></div>
+<div class="container"><h5>Related</h5><article class="card"><p><a href="https://www.thenewatlantis.com/issues/no-23-winter-2009">Winter 2009</a></p></article></div>
+</body></html>
+"""
+URL = "https://www.thenewatlantis.com/publications/zoning-alone"
+
+
+class TestNewAtlantisGraph:
+    def test_reads_title_date_and_author_from_the_graph(self):
+        md = NewAtlantisExtractor().extract_metadata(GRAPH_PAGE, URL)
+        assert md["title"] == "Zoning Alone"
+        assert md["date_published"] == "2026-09-08T15:39:03+00:00"
+        assert md["authors"] == ["Joseph Lawler"]
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

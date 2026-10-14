@@ -145,6 +145,22 @@ def infer_edition_number(season, year):
     return year_base_number + offset
 
 
+def _jsonld_nodes(data):
+    """Flatten a JSON-LD payload into its nodes (handles @graph and lists)."""
+    if isinstance(data, list):
+        return [n for n in data if isinstance(n, dict)]
+    if isinstance(data, dict):
+        if isinstance(data.get("@graph"), list):
+            return [n for n in data["@graph"] if isinstance(n, dict)]
+        return [data]
+    return []
+
+
+def _has_type(node, wanted):
+    t = node.get("@type")
+    return t == wanted or (isinstance(t, list) and wanted in t)
+
+
 class NewAtlantisExtractor(MetadataExtractor):
     """
     Specialized extractor for The New Atlantis articles.
@@ -169,32 +185,32 @@ class NewAtlantisExtractor(MetadataExtractor):
         metadata = {}
 
         # Try to extract from JSON-LD structured data first
-        json_ld_scripts = soup.find_all("script", type="application/ld+json")
-        for script in json_ld_scripts:
+        nodes = []
+        for script in soup.find_all("script", type="application/ld+json"):
             try:
-                data = json.loads(script.string)
-                if isinstance(data, dict) and data.get("@type") == "Article":
-                    metadata["title"] = data.get("headline", "").strip()
-
-                    # Handle author(s)
-                    authors = data.get("author", [])
-                    if isinstance(authors, dict):
-                        authors = [authors]
-                    if authors:
-                        metadata["authors"] = [
-                            re.sub(r"\s+", " ", author.get("name", "").strip())
-                            for author in authors
-                            if author.get("name")
-                        ]
-
-                    # Extract publication date
-                    date_published = data.get("datePublished", "")
-                    if date_published:
-                        metadata["date_published"] = date_published
-
-                    break
-            except (json.JSONDecodeError, KeyError):
+                nodes.extend(_jsonld_nodes(json.loads(script.string or "")))
+            except json.JSONDecodeError:
                 continue
+        by_id = {n["@id"]: n for n in nodes if isinstance(n.get("@id"), str)}
+
+        article = next((n for n in nodes if _has_type(n, "Article")), None)
+        if article:
+            metadata["title"] = (article.get("headline") or "").strip()
+            authors = article.get("author", [])
+            if isinstance(authors, dict):
+                authors = [authors]
+            names = []
+            for author in authors:
+                if not isinstance(author, dict):
+                    continue
+                if not author.get("name") and isinstance(author.get("@id"), str):
+                    author = by_id.get(author["@id"], author)
+                if author.get("name"):
+                    names.append(re.sub(r"\s+", " ", author["name"].strip()))
+            if names:
+                metadata["authors"] = names
+            if article.get("datePublished"):
+                metadata["date_published"] = article["datePublished"]
 
         # Fallback to HTML parsing if JSON-LD doesn't work
         if not metadata.get("title"):
