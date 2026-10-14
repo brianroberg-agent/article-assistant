@@ -5,6 +5,7 @@ Supports The New Atlantis (specialized extraction) and generic sites (LLM-based 
 """
 
 import argparse
+import html
 import json
 import re
 import sys
@@ -256,7 +257,7 @@ class NewAtlantisExtractor(MetadataExtractor):
 
         article = next((n for n in nodes if _has_type(n, "Article")), None)
         if article:
-            metadata["title"] = (article.get("headline") or "").strip()
+            metadata["title"] = html.unescape(article.get("headline") or "").strip()
             authors = article.get("author", [])
             if isinstance(authors, dict):
                 authors = [authors]
@@ -267,7 +268,8 @@ class NewAtlantisExtractor(MetadataExtractor):
                 if not author.get("name") and isinstance(author.get("@id"), str):
                     author = by_id.get(author["@id"], author)
                 if author.get("name"):
-                    names.append(re.sub(r"\s+", " ", author["name"].strip()))
+                    name = html.unescape(author["name"]).strip()
+                    names.append(re.sub(r"\s+", " ", name))
             if names:
                 metadata["authors"] = names
             if article.get("datePublished"):
@@ -282,7 +284,7 @@ class NewAtlantisExtractor(MetadataExtractor):
         if description is None:
             page = next((n for n in nodes if _has_type(n, "WebPage")), None)
             if page and page.get("description"):
-                description = page["description"].strip()
+                description = html.unescape(page["description"]).strip()
         if description:
             metadata["description"] = description
 

@@ -274,6 +274,21 @@ WIDE_WRAPPER_PAGE = """
   <aside class="related"><a href="https://www.thenewatlantis.com/issues/no-85-summer-2026">Summer 2026</a></aside></main>
 </body></html>
 """
+ENTITY_PAGE = """
+<html><head>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@graph": [
+  {"@type": "Article", "@id": "https://www.thenewatlantis.com/publications/notes#article",
+   "author": {"@id": "https://www.thenewatlantis.com/authors/mark-oconnell#person"},
+   "headline": "Notes &#038; Briefs &ldquo;Fall&rdquo;"},
+  {"@type": "WebPage", "@id": "https://www.thenewatlantis.com/publications/notes",
+   "description": "A roundup &#8212; of notes"},
+  {"@type": "Person", "@id": "https://www.thenewatlantis.com/authors/mark-oconnell#person",
+   "name": "Mark O&#8217;Connell"}
+]}
+</script></head>
+<body><h1>Notes &amp; Briefs</h1></body></html>
+"""
 URL = "https://www.thenewatlantis.com/publications/zoning-alone"
 
 
@@ -324,6 +339,29 @@ class TestNewAtlantisGraph:
         )
         md = NewAtlantisExtractor().extract_metadata(page, URL)
         assert md["date_published"] == "2026-09-01"
+
+    def test_decodes_entities_in_the_graph_headline(self):
+        # Yoast leaves HTML entities inside its JSON-LD strings and json.loads
+        # does not decode them, so they would otherwise reach the YAML title.
+        md = NewAtlantisExtractor().extract_metadata(ENTITY_PAGE, URL)
+        assert md["title"] == "Notes & Briefs \u201cFall\u201d"
+
+    def test_decodes_entities_in_a_graph_author_name(self):
+        md = NewAtlantisExtractor().extract_metadata(ENTITY_PAGE, URL)
+        assert md["authors"] == ["Mark O\u2019Connell"]
+
+    def test_decodes_entities_in_the_webpage_description(self):
+        md = NewAtlantisExtractor().extract_metadata(ENTITY_PAGE, URL)
+        assert md["description"] == "A roundup \u2014 of notes"
+
+    def test_meta_description_entities_are_decoded_by_the_parser(self):
+        page = (
+            '<html><head><meta property="og:description" '
+            'content="Notes &amp; Briefs &#8212; the roundup"></head>'
+            "<body><h1>T</h1></body></html>"
+        )
+        md = NewAtlantisExtractor().extract_metadata(page, URL)
+        assert md["description"] == "Notes & Briefs \u2014 the roundup"
 
 
 class TestSeasonStartDate:
