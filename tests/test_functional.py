@@ -13,7 +13,7 @@ import pytest
 import article_assistant
 
 from article_assistant import main
-from tests.test_extractors import GRAPH_PAGE, URL
+from tests.test_extractors import GRAPH_PAGE, URL, WEB_ONLY_PAGE
 
 
 class TestFunctionalEndToEnd:
@@ -287,6 +287,23 @@ def test_metadata_json_flag(capsys):
     assert out["title"] == "Zoning Alone"
     assert out["issue_number"] == "86"
     assert out["description"].startswith("Zoning made us lonely")
+
+
+def test_metadata_json_omits_the_edition_of_a_web_only_piece(capsys):
+    # The pipeline reads a missing key as "absent": a web-only piece must not
+    # carry an issue, but still carries the date and author from its page.
+    with (
+        patch.object(
+            article_assistant, "fetch_article_content", return_value=WEB_ONLY_PAGE
+        ),
+        patch.object(sys, "argv", ["article_assistant.py", "metadata", URL, "--json"]),
+    ):
+        article_assistant.main()
+    out = json.loads(capsys.readouterr().out)
+    assert "issue_number" not in out
+    assert "issue_season" not in out
+    assert out["date_published"] == "2026-10-07T12:00:00+00:00"
+    assert out["authors"] == ["Jane Roe"]
 
 
 if __name__ == "__main__":

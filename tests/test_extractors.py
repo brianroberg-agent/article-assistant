@@ -257,7 +257,18 @@ GRAPH_PAGE = """
 </body></html>
 """
 WEB_ONLY_PAGE = """
-<html><body>
+<html><head>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@graph": [
+  {"@type": "Article", "@id": "https://www.thenewatlantis.com/publications/agi#article",
+   "author": {"@id": "https://www.thenewatlantis.com/authors/jane-roe#person"},
+   "headline": "Are We Really on the Path to AGI?",
+   "datePublished": "2026-10-07T12:00:00+00:00"},
+  {"@type": "Person", "@id": "https://www.thenewatlantis.com/authors/jane-roe#person",
+   "name": "Jane Roe"}
+]}
+</script></head>
+<body>
 <nav><div class="hidden lg:block"><a class="link-transition" href="https://www.thenewatlantis.com/issues/no-86-fall-2026">No. 86 – Fall 2026</a></div></nav>
 <div class="container">
   <div class="block text-center lg:hidden"><aside><p><a href="https://www.thenewatlantis.com/article_type/essay">Essay</a></p>
@@ -398,6 +409,50 @@ class TestNewAtlantisGraph:
         assert md["issue_number"] == "43"
         assert md["issue_season"] == "Summer/Fall 2014"
         assert md["date_published"] == "2014-06-01"
+
+    def test_meta_description_is_used_when_og_description_is_absent(self):
+        page = (
+            '<html><head><meta name="description" content="Plain meta.">'
+            '<script type="application/ld+json">'
+            '{"@graph": [{"@type": "WebPage", "description": "Graph."}]}'
+            "</script></head><body><h1>T</h1></body></html>"
+        )
+        md = NewAtlantisExtractor().extract_metadata(page, URL)
+        assert md["description"] == "Plain meta."
+
+    def test_og_description_wins_over_the_plain_meta_description(self):
+        page = (
+            '<html><head><meta name="description" content="Plain meta.">'
+            '<meta property="og:description" content="Open graph.">'
+            "</head><body><h1>T</h1></body></html>"
+        )
+        md = NewAtlantisExtractor().extract_metadata(page, URL)
+        assert md["description"] == "Open graph."
+
+    def test_webpage_description_is_used_when_both_metas_are_absent(self):
+        page = (
+            '<html><head><script type="application/ld+json">'
+            '{"@graph": [{"@type": "WebPage", "description": "Graph."}]}'
+            "</script></head><body><h1>T</h1></body></html>"
+        )
+        md = NewAtlantisExtractor().extract_metadata(page, URL)
+        assert md["description"] == "Graph."
+
+    def test_no_description_anywhere_leaves_the_key_out(self):
+        page = "<html><body><h1>T</h1></body></html>"
+        md = NewAtlantisExtractor().extract_metadata(page, URL)
+        assert "description" not in md
+
+    def test_unresolvable_author_reference_falls_back_to_the_byline(self):
+        page = (
+            '<html><head><script type="application/ld+json">'
+            '{"@graph": [{"@type": "Article", "headline": "T", '
+            '"author": {"@id": "https://example.org/authors/x#person"}}]}'
+            "</script></head>"
+            '<body><h1>T</h1><p class="byline">By Jane Doe</p></body></html>'
+        )
+        md = NewAtlantisExtractor().extract_metadata(page, URL)
+        assert md["authors"] == ["Jane Doe"]
 
 
 class TestSeasonStartDate:
