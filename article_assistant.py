@@ -710,7 +710,7 @@ def main():
     # metadata subcommand
     metadata_parser = subparsers.add_parser(
         "metadata",
-        help="Extract article metadata as YAML front matter",
+        help="Extract article metadata as YAML front matter (or JSON with --json)",
     )
     metadata_parser.add_argument("url", help="URL of the article")
     metadata_parser.add_argument(
