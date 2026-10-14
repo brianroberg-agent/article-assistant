@@ -662,6 +662,9 @@ def _run_metadata(args):
     if "thenewatlantis.com" not in parsed_url.netloc:
         print("Info: Using LLM-based extraction for this site", file=sys.stderr)
 
+    if getattr(args, "json", False):
+        print(json.dumps(metadata, ensure_ascii=False))
+        return
     markdown_header = format_markdown_header(metadata, args.creation_date)
     print(markdown_header)
 
@@ -711,6 +714,12 @@ def main():
         default="gpt-4o-mini",
         help="LLM model for generic extraction (default: gpt-4o-mini). "
         "Only used for non-specialized sites.",
+    )
+    metadata_parser.add_argument(
+        "--json",
+        action="store_true",
+        default=False,
+        help="Print the extracted metadata as one JSON object instead of YAML",
     )
     # content subcommand
     content_parser = subparsers.add_parser(
