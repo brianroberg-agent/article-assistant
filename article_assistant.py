@@ -183,6 +183,7 @@ def _jsonld_nodes(data):
 
 
 def _has_type(node, wanted):
+    """Whether a JSON-LD node's @type is ``wanted`` or a list containing it."""
     t = node.get("@type")
     return t == wanted or (isinstance(t, list) and wanted in t)
 
