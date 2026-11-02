@@ -423,9 +423,10 @@ class TestNewAtlantisGraph:
     def test_plain_meta_description_wins_over_og_description(self):
         # The live web-only piece "Are We Really on the Path to AGI?" has a
         # byline as its og:description and the summary as its meta description.
+        # The og tag comes first, so a first-in-document-order lookup fails.
         page = (
-            '<html><head><meta name="description" content="The summary.">'
-            '<meta property="og:description" content="By A. Writer">'
+            '<html><head><meta property="og:description" content="By A. Writer">'
+            '<meta name="description" content="The summary.">'
             "</head><body><h1>T</h1></body></html>"
         )
         md = NewAtlantisExtractor().extract_metadata(page, URL)
