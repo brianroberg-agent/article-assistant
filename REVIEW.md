@@ -19,7 +19,7 @@ The New Atlantis has its own extractor (`NewAtlantisExtractor`), which parses th
 
 - The subcommands, their flags, and the exit codes: 0 success; 1 when the fetch fails, `llm` is missing, or `content` can't extract the article; 2 for bad arguments (argparse). A failed LLM call in `metadata` is not an error: it prints a warning to stderr, returns the page's `<title>` (or "Unknown Title") with no authors, and exits 0.
 - The YAML keys and their order, and the `periodical-edition` format `No. N (Season YYYY)`.
-- The `--json` keys and types: `title` (string), `authors` (list of strings), `date_published` (string), `description`, `issue_number` (string), `issue_season`, `publication`. For The New Atlantis a missing key means the page had no value; the LLM path can emit `""`, `[]` or `null` instead.
+- The `--json` keys and types: `title` (string), `authors` (list of strings), `date_published` (string), `description`, `issue_number` (string), `issue_season`, `publication`. For The New Atlantis a missing key means the page had no value. The LLM path returns only `title`, `authors`, `publication` and `date_published`, which can be empty (`""`, `[]`, `null`) and is left out when the call fails; it never returns `description` or an edition.
 - Output on stdout only; diagnostics go to stderr. A stray `print` to stdout corrupts the JSON and the YAML for every caller.
 
 ## What a change can break
