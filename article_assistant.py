@@ -282,8 +282,10 @@ class NewAtlantisExtractor(MetadataExtractor):
             if article.get("datePublished"):
                 metadata["date_published"] = article["datePublished"]
 
+        # The plain meta description first: an editor can set og:description
+        # to something else for social cards, such as just the byline.
         description = None
-        for attrs in ({"property": "og:description"}, {"name": "description"}):
+        for attrs in ({"name": "description"}, {"property": "og:description"}):
             tag = soup.find("meta", attrs=attrs)
             if tag and tag.get("content", "").strip():
                 description = tag["content"].strip()

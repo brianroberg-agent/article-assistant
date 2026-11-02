@@ -420,10 +420,20 @@ class TestNewAtlantisGraph:
         md = NewAtlantisExtractor().extract_metadata(page, URL)
         assert md["description"] == "Plain meta."
 
-    def test_og_description_wins_over_the_plain_meta_description(self):
+    def test_plain_meta_description_wins_over_og_description(self):
+        # The live web-only piece "Are We Really on the Path to AGI?" has a
+        # byline as its og:description and the summary as its meta description.
         page = (
-            '<html><head><meta name="description" content="Plain meta.">'
-            '<meta property="og:description" content="Open graph.">'
+            '<html><head><meta name="description" content="The summary.">'
+            '<meta property="og:description" content="By A. Writer">'
+            "</head><body><h1>T</h1></body></html>"
+        )
+        md = NewAtlantisExtractor().extract_metadata(page, URL)
+        assert md["description"] == "The summary."
+
+    def test_og_description_is_used_when_the_plain_meta_is_absent(self):
+        page = (
+            '<html><head><meta property="og:description" content="Open graph.">'
             "</head><body><h1>T</h1></body></html>"
         )
         md = NewAtlantisExtractor().extract_metadata(page, URL)
