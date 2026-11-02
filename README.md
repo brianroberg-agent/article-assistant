@@ -107,7 +107,7 @@ uv run python article_assistant.py metadata --json "https://www.thenewatlantis.c
 ```json
 {"title": "Zoning Alone", "authors": ["Joseph Lawler"],
  "date_published": "2026-09-08T15:39:03+00:00",
- "description": "Zoning made us lonely. The Court may end it.",
+ "description": "The 100-year-old experiment of zoning is part of why Americans have become so isolated. The Supreme Court may soon bring it to an end — and help bring back real neighborhoods.",
  "issue_number": "86", "issue_season": "Fall 2026",
  "publication": "The New Atlantis"}
 ```
