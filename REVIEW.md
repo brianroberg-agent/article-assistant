@@ -13,6 +13,7 @@ The New Atlantis has its own extractor (`NewAtlantisExtractor`), which parses th
 
 - **Brian's notes**: the YAML header goes straight into Markdown notes.
 - **kokoro-reader's `recording-article-audio` skill** runs `content URL --no-images` for the text to narrate and `metadata URL` for the MP3 tags (title, artist, album) and the Audiobookshelf podcast name (`publication`).
+- **kokoro-reader's narration server** (merged in kokoro-reader #10) publishes the metadata's `description` verbatim as the first line of each episode's public notes.
 - **kokoro-reader's on-demand and nightly runner** (planned) reads `metadata --json` for the episode's title, authors, date, notes and edition. A key it relies on changing name, type or meaning breaks it without an error.
 
 ## What counts as an interface
@@ -25,6 +26,7 @@ The New Atlantis has its own extractor (`NewAtlantisExtractor`), which parses th
 ## What a change can break
 
 - **A wrong edition on a published episode.** The New Atlantis's site-wide nav links the current issue on every page, and "Related" cards link other issues. A search over the whole page attaches the wrong edition to an article; the article's own edition is the `/issues/` link in the header aside beside the `h1`.
+- **A wrong description in public episode notes.** Which source the description comes from (meta description, `og:description`, the JSON-LD `WebPage` node) decides what listeners read; one live page sets `og:description` to just its byline.
 - **A wrong or missing title, author or date** when the page's structured data changes shape. The site serves a Yoast JSON-LD `@graph` today, with authors as `@id` references and HTML entities left inside the strings.
 - **A silent fallback.** When the structured data isn't found, the extractor falls back to the `h1` and the byline with no warning. A green suite can hide that the live site no longer matches the fixtures.
 - **A failed LLM call that looks like success.** On generic sites, an expired key or a model error still exits 0, with placeholder metadata. The tests mock `llm`, so a change that makes every call fail stays green; check a generic URL live after touching `LLMExtractor`.
