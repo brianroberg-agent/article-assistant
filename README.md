@@ -112,7 +112,7 @@ uv run python article_assistant.py metadata --json "https://www.thenewatlantis.c
  "publication": "The New Atlantis"}
 ```
 
-For The New Atlantis, a missing key means the value was absent from the page: a web-only piece has no `issue_number` or `issue_season`. Generic sites go through the LLM extractor, which can emit empty values (`""`, `[]`, `null`) instead.
+For The New Atlantis, a missing key means the value was absent from the page: a web-only piece has no `issue_number` or `issue_season`. The exception is `date_published`: when the page gives no publication date but names an edition, it is the first day of that edition's season, as a date with no time (`2025-12-01` for Winter 2026). Generic sites go through the LLM extractor, which can emit empty values (`""`, `[]`, `null`) instead.
 
 ### Help
 
