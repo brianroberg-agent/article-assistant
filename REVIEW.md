@@ -17,7 +17,7 @@ The New Atlantis has its own extractor (`NewAtlantisExtractor`), which parses th
 
 ## What counts as an interface
 
-- The subcommands, their flags, and the exit codes (0 success, 1 fetch or extraction error, 2 bad arguments, from argparse).
+- The subcommands, their flags, and the exit codes: 0 success; 1 when the fetch fails, `llm` is missing, or `content` can't extract the article; 2 for bad arguments (argparse). A failed LLM call in `metadata` is not an error: it prints a warning to stderr, returns the page's `<title>` (or "Unknown Title") with no authors, and exits 0.
 - The YAML keys and their order, and the `periodical-edition` format `No. N (Season YYYY)`.
 - The `--json` keys and types: `title` (string), `authors` (list of strings), `date_published` (string), `description`, `issue_number` (string), `issue_season`, `publication`. For The New Atlantis a missing key means the page had no value; the LLM path can emit `""`, `[]` or `null` instead.
 - Output on stdout only; diagnostics go to stderr. A stray `print` to stdout corrupts the JSON and the YAML for every caller.
@@ -27,6 +27,7 @@ The New Atlantis has its own extractor (`NewAtlantisExtractor`), which parses th
 - **A wrong edition on a published episode.** The New Atlantis's site-wide nav links the current issue on every page, and "Related" cards link other issues. A search over the whole page attaches the wrong edition to an article; the article's own edition is the `/issues/` link in the header aside beside the `h1`.
 - **A wrong or missing title, author or date** when the page's structured data changes shape. The site serves a Yoast JSON-LD `@graph` today, with authors as `@id` references and HTML entities left inside the strings.
 - **A silent fallback.** When the structured data isn't found, the extractor falls back to the `h1` and the byline with no warning. A green suite can hide that the live site no longer matches the fixtures.
+- **A failed LLM call that looks like success.** On generic sites, an expired key or a model error still exits 0, with placeholder metadata. The tests mock `llm`, so a change that makes every call fail stays green; check a generic URL live after touching `LLMExtractor`.
 
 ## What reviewers here tend to miss
 
