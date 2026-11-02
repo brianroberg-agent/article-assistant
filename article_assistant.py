@@ -5,6 +5,7 @@ Supports The New Atlantis (specialized extraction) and generic sites (LLM-based 
 """
 
 import argparse
+import html
 import json
 import re
 import sys
@@ -145,6 +146,91 @@ def infer_edition_number(season, year):
     return year_base_number + offset
 
 
+SEASON_START = {
+    "spring": (0, "03-01"),
+    "summer": (0, "06-01"),
+    "fall": (0, "09-01"),
+    "autumn": (0, "09-01"),
+    "winter": (-1, "12-01"),
+}
+
+
+def season_start_date(season, year):
+    """First day of an edition's meteorological season, as YYYY-MM-DD.
+
+    "Winter 2026" is the first issue of 2026 (see infer_edition_number), and
+    meteorological winter starts the previous December, so it maps to
+    2025-12-01. A double issue ("Summer/Fall") starts with its first season.
+    Returns None for an unknown season.
+    """
+    first_season = str(season).split("/")[0].strip().lower()
+    entry = SEASON_START.get(first_season)
+    if entry is None:
+        return None
+    year_offset, month_day = entry
+    return f"{int(year) + year_offset}-{month_day}"
+
+
+def _jsonld_nodes(data):
+    """Flatten a JSON-LD payload into its nodes (handles @graph and lists)."""
+    if isinstance(data, list):
+        return [n for n in data if isinstance(n, dict)]
+    if isinstance(data, dict):
+        if isinstance(data.get("@graph"), list):
+            return [n for n in data["@graph"] if isinstance(n, dict)]
+        return [data]
+    return []
+
+
+def _has_type(node, wanted):
+    """Whether a JSON-LD node's @type is ``wanted`` or a list containing it."""
+    t = node.get("@type")
+    return t == wanted or (isinstance(t, list) and wanted in t)
+
+
+SEASON_WORD_RE = re.compile(r"winter|spring|summer|fall|autumn", re.I)
+# A double issue runs its seasons together in the slug, as in
+# "no-43-summerfall-2014" (the site calls it "No. 43 - Summer/Fall 2014").
+ISSUE_SLUG_RE = re.compile(
+    r"/issues/no-(\d+)-((?:winter|spring|summer|fall|autumn)+)-(\d{4})", re.I
+)
+
+
+def _edition_from_header(soup):
+    """The article's own edition, read from the header aside beside its h1.
+
+    On today's layout the aside sits in the block just before the h1's own
+    block (``div > aside``, then ``div > h1``); it may also be that block's
+    direct neighbour. Only those two places count: a descendant search from
+    higher up would take the first aside anywhere below, such as a "Related"
+    card for another issue.
+
+    Returns (number, "Season Year") when the aside links an issue, "none" when
+    the aside exists but links no issue (a web-only piece), and None when the
+    page has no such header (older layouts), so callers may fall back.
+    """
+    h1 = soup.find("h1")
+    if h1 is None or h1.parent is None:
+        return None
+    holder = h1.parent
+    aside = None
+    for block in (holder.find_previous_sibling(True), holder.find_next_sibling(True)):
+        if block is None:
+            continue
+        aside = block if block.name == "aside" else block.find("aside", recursive=False)
+        if aside is not None:
+            break
+    if aside is None:
+        return None
+    for link in aside.select('a[href*="/issues/"]'):
+        m = ISSUE_SLUG_RE.search(link.get("href", ""))
+        if m:
+            words = SEASON_WORD_RE.findall(m.group(2))
+            seasons = "/".join(word.title() for word in words)
+            return m.group(1), f"{seasons} {m.group(3)}"
+    return "none"
+
+
 class NewAtlantisExtractor(MetadataExtractor):
     """
     Specialized extractor for The New Atlantis articles.
@@ -169,32 +255,48 @@ class NewAtlantisExtractor(MetadataExtractor):
         metadata = {}
 
         # Try to extract from JSON-LD structured data first
-        json_ld_scripts = soup.find_all("script", type="application/ld+json")
-        for script in json_ld_scripts:
+        nodes = []
+        for script in soup.find_all("script", type="application/ld+json"):
             try:
-                data = json.loads(script.string)
-                if isinstance(data, dict) and data.get("@type") == "Article":
-                    metadata["title"] = data.get("headline", "").strip()
-
-                    # Handle author(s)
-                    authors = data.get("author", [])
-                    if isinstance(authors, dict):
-                        authors = [authors]
-                    if authors:
-                        metadata["authors"] = [
-                            re.sub(r"\s+", " ", author.get("name", "").strip())
-                            for author in authors
-                            if author.get("name")
-                        ]
-
-                    # Extract publication date
-                    date_published = data.get("datePublished", "")
-                    if date_published:
-                        metadata["date_published"] = date_published
-
-                    break
-            except (json.JSONDecodeError, KeyError):
+                nodes.extend(_jsonld_nodes(json.loads(script.string or "")))
+            except json.JSONDecodeError:
                 continue
+        by_id = {n["@id"]: n for n in nodes if isinstance(n.get("@id"), str)}
+
+        article = next((n for n in nodes if _has_type(n, "Article")), None)
+        if article:
+            metadata["title"] = html.unescape(article.get("headline") or "").strip()
+            authors = article.get("author", [])
+            if isinstance(authors, dict):
+                authors = [authors]
+            names = []
+            for author in authors:
+                if not isinstance(author, dict):
+                    continue
+                if not author.get("name") and isinstance(author.get("@id"), str):
+                    author = by_id.get(author["@id"], author)
+                if author.get("name"):
+                    name = html.unescape(author["name"]).strip()
+                    names.append(re.sub(r"\s+", " ", name))
+            if names:
+                metadata["authors"] = names
+            if article.get("datePublished"):
+                metadata["date_published"] = article["datePublished"]
+
+        # The plain meta description first: an editor can set og:description
+        # to something else for social cards, such as just the byline.
+        description = None
+        for attrs in ({"name": "description"}, {"property": "og:description"}):
+            tag = soup.find("meta", attrs=attrs)
+            if tag and tag.get("content", "").strip():
+                description = tag["content"].strip()
+                break
+        if description is None:
+            page = next((n for n in nodes if _has_type(n, "WebPage")), None)
+            if page and page.get("description"):
+                description = html.unescape(page["description"]).strip()
+        if description:
+            metadata["description"] = description
 
         # Fallback to HTML parsing if JSON-LD doesn't work
         if not metadata.get("title"):
@@ -213,40 +315,56 @@ class NewAtlantisExtractor(MetadataExtractor):
                 author_text = re.sub(r"\s+", " ", author_text)
                 metadata["authors"] = [author_text]
 
-        # Extract issue information
-        issue_info = soup.find(string=re.compile(r"No\.\s*\d+"))
-        if issue_info:
-            issue_match = re.search(r"No\.\s*(\d+)\s*\(([^)]+)\)", issue_info)
-            if issue_match:
-                metadata["issue_number"] = issue_match.group(1)
-                metadata["issue_season"] = issue_match.group(2)
+        # The article's own edition is the link in its header aside. The
+        # page-wide search below runs only for pages without that header: the
+        # nav and Related cards also name other issues.
+        edition = _edition_from_header(soup)
+        if isinstance(edition, tuple):
+            metadata["issue_number"], metadata["issue_season"] = edition
 
-        # If no explicit issue number found, look for season-only patterns
-        if not metadata.get("issue_number"):
-            # Look for patterns like "Winter 2025", "Spring 2024", etc.
-            season_patterns = [
-                r"(Winter|Spring|Summer|Fall|Autumn)\s+(\d{4})",
-                r"(\d{4})\s+(Winter|Spring|Summer|Fall|Autumn)",
-            ]
+        if edition is None:
+            # Extract issue information
+            issue_info = soup.find(string=re.compile(r"No\.\s*\d+"))
+            if issue_info:
+                issue_match = re.search(r"No\.\s*(\d+)\s*\(([^)]+)\)", issue_info)
+                if issue_match:
+                    metadata["issue_number"] = issue_match.group(1)
+                    metadata["issue_season"] = issue_match.group(2)
 
-            for pattern in season_patterns:
-                season_match = soup.find(string=re.compile(pattern, re.IGNORECASE))
-                if season_match:
-                    match = re.search(pattern, season_match, re.IGNORECASE)
-                    if match:
-                        if match.group(1).isdigit():
-                            # Pattern: "2025 Winter"
-                            year, season = match.group(1), match.group(2)
-                        else:
-                            # Pattern: "Winter 2025"
-                            season, year = match.group(1), match.group(2)
+            # If no explicit issue number found, look for season-only patterns
+            if not metadata.get("issue_number"):
+                # Look for patterns like "Winter 2025", "Spring 2024", etc.
+                season_patterns = [
+                    r"(Winter|Spring|Summer|Fall|Autumn)\s+(\d{4})",
+                    r"(\d{4})\s+(Winter|Spring|Summer|Fall|Autumn)",
+                ]
 
-                        # Infer the issue number
-                        inferred_number = infer_edition_number(season, int(year))
-                        if inferred_number:
-                            metadata["issue_number"] = str(inferred_number)
-                            metadata["issue_season"] = f"{season} {year}"
-                        break
+                for pattern in season_patterns:
+                    season_match = soup.find(string=re.compile(pattern, re.IGNORECASE))
+                    if season_match:
+                        match = re.search(pattern, season_match, re.IGNORECASE)
+                        if match:
+                            if match.group(1).isdigit():
+                                # Pattern: "2025 Winter"
+                                year, season = match.group(1), match.group(2)
+                            else:
+                                # Pattern: "Winter 2025"
+                                season, year = match.group(1), match.group(2)
+
+                            # Infer the issue number
+                            inferred_number = infer_edition_number(season, int(year))
+                            if inferred_number:
+                                metadata["issue_number"] = str(inferred_number)
+                                metadata["issue_season"] = f"{season} {year}"
+                            break
+
+        # No datePublished: use the start of the edition's season
+        if not metadata.get("date_published") and metadata.get("issue_season"):
+            parts = metadata["issue_season"].split()
+            if len(parts) == 2 and parts[1].isdigit():
+                fallback = season_start_date(parts[0], int(parts[1]))
+                if fallback:
+                    metadata["date_published"] = fallback
 
         # Set publication name
         metadata["publication"] = "The New Atlantis"
@@ -556,6 +674,9 @@ def _run_metadata(args):
     if "thenewatlantis.com" not in parsed_url.netloc:
         print("Info: Using LLM-based extraction for this site", file=sys.stderr)
 
+    if getattr(args, "json", False):
+        print(json.dumps(metadata, ensure_ascii=False))
+        return
     markdown_header = format_markdown_header(metadata, args.creation_date)
     print(markdown_header)
 
@@ -592,7 +713,7 @@ def main():
     # metadata subcommand
     metadata_parser = subparsers.add_parser(
         "metadata",
-        help="Extract article metadata as YAML front matter",
+        help="Extract article metadata as YAML front matter (or JSON with --json)",
     )
     metadata_parser.add_argument("url", help="URL of the article")
     metadata_parser.add_argument(
@@ -605,6 +726,12 @@ def main():
         default="gpt-4o-mini",
         help="LLM model for generic extraction (default: gpt-4o-mini). "
         "Only used for non-specialized sites.",
+    )
+    metadata_parser.add_argument(
+        "--json",
+        action="store_true",
+        default=False,
+        help="Print the extracted metadata as one JSON object instead of YAML",
     )
     # content subcommand
     content_parser = subparsers.add_parser(

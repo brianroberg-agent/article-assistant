@@ -95,6 +95,25 @@ Specify a custom creation date:
 uv run python extract_article_metadata.py --creation-date 2024-12-01 "https://example.com/article-url"
 ```
 
+### JSON Output
+
+Print the metadata as a single JSON object instead of the YAML header, for scripts and pipelines:
+
+```bash
+uv run python article_assistant.py metadata --json "https://www.thenewatlantis.com/publications/zoning-alone"
+```
+
+**Output** (one line, shown wrapped here):
+```json
+{"title": "Zoning Alone", "authors": ["Joseph Lawler"],
+ "date_published": "2026-09-08T15:39:03+00:00",
+ "description": "The 100-year-old experiment of zoning is part of why Americans have become so isolated. The Supreme Court may soon bring it to an end — and help bring back real neighborhoods.",
+ "issue_number": "86", "issue_season": "Fall 2026",
+ "publication": "The New Atlantis"}
+```
+
+For The New Atlantis, a missing key means the value was absent from the page: a web-only piece has no `issue_number` or `issue_season`. The exception is `date_published`: when the page gives no publication date, it is the first day of the season of the edition the extractor found, as a date with no time (`2025-12-01` for Winter 2026), so it is only as right as that edition. Generic sites go through the LLM extractor, which returns only `title`, `authors`, `publication` and `date_published`; those can be empty (`""`, `[]`, `null`), and `date_published` is left out when the LLM call fails.
+
 ### Help
 
 View all available options:

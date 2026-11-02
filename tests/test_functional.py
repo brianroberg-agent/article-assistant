@@ -4,13 +4,16 @@ Functional tests for article_assistant.py
 Tests the script end-to-end with real and mock data.
 """
 
+import json
 import subprocess
 import sys
 from pathlib import Path
 from unittest.mock import patch, Mock
 import pytest
+import article_assistant
 
 from article_assistant import main
+from tests.test_extractors import GRAPH_PAGE, URL, WEB_ONLY_PAGE
 
 
 class TestFunctionalEndToEnd:
@@ -270,6 +273,37 @@ class TestFunctionalRealWorldHtml:
         assert "title: Minimal Article" in formatted
         assert "  - Unknown Author" in formatted  # Default author
         assert "publication: The New Atlantis" in formatted
+
+
+def test_metadata_json_flag(capsys):
+    with (
+        patch.object(
+            article_assistant, "fetch_article_content", return_value=GRAPH_PAGE
+        ),
+        patch.object(sys, "argv", ["article_assistant.py", "metadata", URL, "--json"]),
+    ):
+        article_assistant.main()
+    out = json.loads(capsys.readouterr().out)
+    assert out["title"] == "Zoning Alone"
+    assert out["issue_number"] == "86"
+    assert out["description"].startswith("Zoning made us lonely")
+
+
+def test_metadata_json_omits_the_edition_of_a_web_only_piece(capsys):
+    # The pipeline reads a missing key as "absent": a web-only piece must not
+    # carry an issue, but still carries the date and author from its page.
+    with (
+        patch.object(
+            article_assistant, "fetch_article_content", return_value=WEB_ONLY_PAGE
+        ),
+        patch.object(sys, "argv", ["article_assistant.py", "metadata", URL, "--json"]),
+    ):
+        article_assistant.main()
+    out = json.loads(capsys.readouterr().out)
+    assert "issue_number" not in out
+    assert "issue_season" not in out
+    assert out["date_published"] == "2026-10-07T12:00:00+00:00"
+    assert out["authors"] == ["Jane Roe"]
 
 
 if __name__ == "__main__":
