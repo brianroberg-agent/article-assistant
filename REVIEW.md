@@ -1,0 +1,36 @@
+# Reviewing article-assistant
+
+## What this repo is
+
+One script, `article_assistant.py`, with two subcommands:
+
+- `metadata URL` prints a YAML header (title, author list, format, creation date, publication, periodical edition) for a Markdown note. With `--json` it prints the extracted fields as one JSON object instead.
+- `content URL` prints the article's text as Markdown. `--no-images` drops the images.
+
+The New Atlantis has its own extractor (`NewAtlantisExtractor`), which parses the page directly and needs no API key. Every other site goes through `LLMExtractor`, which sends the page to a model through Simon Willison's `llm`.
+
+## Who depends on it
+
+- **Brian's notes**: the YAML header goes straight into Markdown notes.
+- **kokoro-reader's `recording-article-audio` skill** runs `content URL --no-images` for the text to narrate and `metadata URL` for the MP3 tags (title, artist, album) and the Audiobookshelf podcast name (`publication`).
+- **kokoro-reader's on-demand and nightly runner** (planned) reads `metadata --json` for the episode's title, authors, date, notes and edition. A key it relies on changing name, type or meaning breaks it without an error.
+
+## What counts as an interface
+
+- The subcommands, their flags, and the exit codes (0 success, 1 fetch or extraction error, 2 bad arguments, from argparse).
+- The YAML keys and their order, and the `periodical-edition` format `No. N (Season YYYY)`.
+- The `--json` keys and types: `title` (string), `authors` (list of strings), `date_published` (string), `description`, `issue_number` (string), `issue_season`, `publication`. For The New Atlantis a missing key means the page had no value; the LLM path can emit `""`, `[]` or `null` instead.
+- Output on stdout only; diagnostics go to stderr. A stray `print` to stdout corrupts the JSON and the YAML for every caller.
+
+## What a change can break
+
+- **A wrong edition on a published episode.** The New Atlantis's site-wide nav links the current issue on every page, and "Related" cards link other issues. A search over the whole page attaches the wrong edition to an article; the article's own edition is the `/issues/` link in the header aside beside the `h1`.
+- **A wrong or missing title, author or date** when the page's structured data changes shape. The site serves a Yoast JSON-LD `@graph` today, with authors as `@id` references and HTML entities left inside the strings.
+- **A silent fallback.** When the structured data isn't found, the extractor falls back to the `h1` and the byline with no warning. A green suite can hide that the live site no longer matches the fixtures.
+
+## What reviewers here tend to miss
+
+- **The tests mock the network.** Every fixture is a hand-trimmed page. Run `metadata --json` against a few live pages before calling a parser change ready: a print-edition article, a web-only piece (no edition), a double issue (`no-43-summerfall-2014`) and a multi-author piece.
+- **Web-only pieces and older layouts take different paths.** A web-only page has the header aside but no issue link; an older page has no header aside at all and still uses the page-wide search.
+- **The YAML header changes when extraction changes.** A fix aimed at `--json` can change what lands in Brian's notes; check both outputs.
+- **The repo's `CLAUDE.md` says the user manages commits.** A PR from the bot's fork has to carry commits, so that line is overridden for bot PRs, and the PR says so.
