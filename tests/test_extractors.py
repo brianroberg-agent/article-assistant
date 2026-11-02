@@ -410,7 +410,7 @@ class TestNewAtlantisGraph:
         assert md["issue_season"] == "Summer/Fall 2014"
         assert md["date_published"] == "2014-06-01"
 
-    def test_meta_description_is_used_when_og_description_is_absent(self):
+    def test_meta_description_beats_the_webpage_description(self):
         page = (
             '<html><head><meta name="description" content="Plain meta.">'
             '<script type="application/ld+json">'
