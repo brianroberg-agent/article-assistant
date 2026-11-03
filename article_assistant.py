@@ -316,14 +316,15 @@ class NewAtlantisExtractor(MetadataExtractor):
                 metadata["authors"] = [author_text]
 
         # The byline: the names the page shows under the title, for a reader that
-        # says who wrote the piece (kokoro-reader reads them aloud). "Related"
-        # cards at the foot name other articles' authors. With no author link
-        # anywhere, the page isn't in the markup this reads, so the byline is
-        # unknown and left out, not empty.
-        author_links = soup.select("a.link-author")
-        if author_links:
-            names = (re.sub(r"\s+", " ", a.get_text()).strip() for a in author_links
-                     if not a.find_parent("article", class_="card"))
+        # says who wrote the piece (kokoro-reader reads them aloud). The title
+        # header is the h1's parent div.text-center (the title, the deck and, when
+        # the page shows one, the byline); "Related" cards at the foot, outside
+        # it, name other articles' authors. A page with no such header isn't in
+        # the markup this reads, so its byline is unknown and left out, not empty.
+        h1 = soup.find("h1")
+        header = h1.parent if h1 is not None else None
+        if header is not None and header.name == "div" and "text-center" in (header.get("class") or []):
+            names = (re.sub(r"\s+", " ", a.get_text()).strip() for a in header.select("a.link-author"))
             metadata["byline"] = [n for n in names if n]
 
         # The article's own edition is the link in its header aside. The
