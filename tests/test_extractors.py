@@ -466,6 +466,51 @@ class TestNewAtlantisGraph:
         assert md["authors"] == ["Jane Doe"]
 
 
+# The visible byline, in the live pages' shape: the header names the article's
+# authors under the title; "Related" cards at the foot name other articles' authors.
+def _byline_page(header_names, card_names=("Card Writer",), graph_author="A Coalition"):
+    header = "".join(
+        f'<a href="https://www.thenewatlantis.com/authors/x{i}" class="link-author">{n}</a>'
+        + (" and " if i < len(header_names) - 1 else "")
+        for i, n in enumerate(header_names))
+    head_block = (f'<div class="lg:px-16 text-center"><p class="font-callunasans italic">'
+                  f"{header}</p></div>") if header_names else ""
+    cards = "".join(
+        '<article class="card mb-8"><div class="mb-2 text-grey"><p class="font-callunasans italic">'
+        f'<a href="https://www.thenewatlantis.com/authors/c" class="link-author">{n}</a></p></div></article>'
+        for n in card_names)
+    graph = ('<script type="application/ld+json">{"@graph": [{"@type": "Article", "headline": "T", '
+             f'"author": {{"name": "{graph_author}"}}}}]}}</script>')
+    return f"<html><head>{graph}</head><body><h1>T</h1>{head_block}<p>Body.</p>{cards}</body></html>"
+
+
+class TestNewAtlantisByline:
+    """kokoro-reader reads the byline aloud before the article (Brian, 2026-11-03):
+    only the names the page shows under the title count as attributed."""
+
+    def test_byline_is_the_names_under_the_title_not_the_related_cards(self):
+        md = NewAtlantisExtractor().extract_metadata(
+            _byline_page(["Ada Quill", "Mara O&#8217;Dell"]), URL)
+        assert md["byline"] == ["Ada Quill", "Mara O\u2019Dell"]
+
+    def test_byline_is_empty_when_only_the_structured_data_names_an_author(self):
+        # The Pro-Human AI Declaration's shape: no name under the title, an author in
+        # the JSON-LD graph only. authors keeps the graph's name, as before.
+        md = NewAtlantisExtractor().extract_metadata(_byline_page([]), URL)
+        assert md["byline"] == []
+        assert md["authors"] == ["A Coalition"]
+
+    def test_byline_is_left_out_when_the_page_has_no_author_links_at_all(self):
+        # No link-author anywhere: the markup isn't the one this reads, so the
+        # byline is unknown, not empty.
+        md = NewAtlantisExtractor().extract_metadata(_byline_page([], card_names=()), URL)
+        assert "byline" not in md
+
+    def test_byline_names_are_trimmed_and_their_spaces_collapsed(self):
+        md = NewAtlantisExtractor().extract_metadata(_byline_page(["  Ada \n  Quill "]), URL)
+        assert md["byline"] == ["Ada Quill"]
+
+
 class TestSeasonStartDate:
     def test_seasons(self):
         assert season_start_date("Spring", 2026) == "2026-03-01"

@@ -315,6 +315,17 @@ class NewAtlantisExtractor(MetadataExtractor):
                 author_text = re.sub(r"\s+", " ", author_text)
                 metadata["authors"] = [author_text]
 
+        # The byline: the names the page shows under the title, for a reader that
+        # says who wrote the piece (kokoro-reader reads them aloud). "Related"
+        # cards at the foot name other articles' authors. With no author link
+        # anywhere, the page isn't in the markup this reads, so the byline is
+        # unknown and left out, not empty.
+        author_links = soup.select("a.link-author")
+        if author_links:
+            names = (re.sub(r"\s+", " ", a.get_text()).strip() for a in author_links
+                     if not a.find_parent("article", class_="card"))
+            metadata["byline"] = [n for n in names if n]
+
         # The article's own edition is the link in its header aside. The
         # page-wide search below runs only for pages without that header: the
         # nav and Related cards also name other issues.

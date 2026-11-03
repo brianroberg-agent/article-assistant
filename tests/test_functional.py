@@ -289,6 +289,28 @@ def test_metadata_json_flag(capsys):
     assert out["description"].startswith("Zoning made us lonely")
 
 
+def test_metadata_json_carries_the_byline_and_the_yaml_header_does_not(capsys):
+    # kokoro-reader reads "byline" from --json; the YAML header for Brian's notes keeps
+    # its keys (REVIEW.md: a change aimed at --json can change his notes).
+    page = (
+        "<html><body><h1>T</h1>"
+        '<p class="font-callunasans italic"><a href="https://www.thenewatlantis.com/authors/a" '
+        'class="link-author">Ada Quill</a></p><p>Body.</p></body></html>'
+    )
+    with (
+        patch.object(article_assistant, "fetch_article_content", return_value=page),
+        patch.object(sys, "argv", ["article_assistant.py", "metadata", URL, "--json"]),
+    ):
+        article_assistant.main()
+    assert json.loads(capsys.readouterr().out)["byline"] == ["Ada Quill"]
+    with (
+        patch.object(article_assistant, "fetch_article_content", return_value=page),
+        patch.object(sys, "argv", ["article_assistant.py", "metadata", URL]),
+    ):
+        article_assistant.main()
+    assert "byline" not in capsys.readouterr().out
+
+
 def test_metadata_json_omits_the_edition_of_a_web_only_piece(capsys):
     # The pipeline reads a missing key as "absent": a web-only piece must not
     # carry an issue, but still carries the date and author from its page.
