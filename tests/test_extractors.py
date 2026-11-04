@@ -466,6 +466,60 @@ class TestNewAtlantisGraph:
         assert md["authors"] == ["Jane Doe"]
 
 
+# The visible byline, in the live pages' shape (2026-11-03): the title header is the
+# h1's parent div.text-center, holding the title, the deck and, when the page shows
+# one, the byline's author links; "Related" cards at the foot name other articles' authors.
+def _byline_page(header_names, card_names=("Card Writer",), graph_author="A Coalition",
+                 slot=True, header=True):
+    links = " and ".join(
+        f'<a href="https://www.thenewatlantis.com/authors/x{i}" class="link-author">{n}</a>'
+        for i, n in enumerate(header_names))
+    byline = (f'<div class="text-grey text-sm mt-3"><p class="font-callunasans italic">{links}</p></div>'
+              if slot else "")
+    title = (f'<div class="text-center"><h1>T</h1><div class="text-dark-grey">Deck.</div>{byline}</div>'
+             if header else f"<div><h1>T</h1>{byline}</div>")
+    cards = "".join(
+        '<article class="card mb-8"><div class="mb-2 text-grey"><p class="font-callunasans italic">'
+        f'<a href="https://www.thenewatlantis.com/authors/c" class="link-author">{n}</a></p></div></article>'
+        for n in card_names)
+    graph = ('<script type="application/ld+json">{"@graph": [{"@type": "Article", "headline": "T", '
+             f'"author": {{"name": "{graph_author}"}}}}]}}</script>')
+    return f"<html><head>{graph}</head><body>{title}<p>Body.</p>{cards}</body></html>"
+
+
+class TestNewAtlantisByline:
+    """kokoro-reader reads the byline aloud before the article (Brian, 2026-11-03):
+    only the names the page shows under the title count as attributed."""
+
+    def test_byline_is_the_names_under_the_title_not_the_related_cards(self):
+        md = NewAtlantisExtractor().extract_metadata(
+            _byline_page(["Ada Quill", "Mara O&#8217;Dell"]), URL)
+        assert md["byline"] == ["Ada Quill", "Mara O\u2019Dell"]
+
+    def test_byline_is_empty_when_only_the_structured_data_names_an_author(self):
+        # The Pro-Human AI Declaration's shape: no byline under the title, an author in
+        # the JSON-LD graph only, author links in the Related cards. authors keeps the
+        # graph's name, as before.
+        md = NewAtlantisExtractor().extract_metadata(_byline_page([], slot=False), URL)
+        assert md["byline"] == []
+        assert md["authors"] == ["A Coalition"]
+
+    def test_byline_is_empty_for_an_empty_byline_and_no_cards(self):
+        # Review finding: "400 Million Americans" has an empty byline under its title
+        # and no Related cards, so no author link anywhere; its byline is still [].
+        md = NewAtlantisExtractor().extract_metadata(_byline_page([], card_names=()), URL)
+        assert md["byline"] == []
+
+    def test_byline_is_left_out_when_the_page_has_no_title_header(self):
+        # Not the markup this reads: the byline is unknown, not empty.
+        md = NewAtlantisExtractor().extract_metadata(_byline_page(["Ada Quill"], header=False), URL)
+        assert "byline" not in md
+
+    def test_byline_names_are_trimmed_and_their_spaces_collapsed(self):
+        md = NewAtlantisExtractor().extract_metadata(_byline_page(["  Ada \n  Quill "]), URL)
+        assert md["byline"] == ["Ada Quill"]
+
+
 class TestSeasonStartDate:
     def test_seasons(self):
         assert season_start_date("Spring", 2026) == "2026-03-01"
