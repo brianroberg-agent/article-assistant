@@ -540,3 +540,70 @@ class TestSeasonStartDate:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+# The print citation, in the live pages' shape (2026-11-10): a print article ends with
+# a grey line citing its edition and pages, after the body and before the image
+# credit. Web-only pieces and online-only interviews have none.
+def _cited_page(citation, slug="no-86-fall-2026"):
+    aside = (
+        '<aside><p><a href="https://www.thenewatlantis.com/article_type/essay">Essay</a></p>'
+        f'<p><a class="link-transition" href="https://www.thenewatlantis.com/issues/{slug}">'
+        "label</a></p></aside>"
+        if slug
+        else "<aside><p>October 7, 2026</p></aside>"
+    )
+    cite = (
+        f'<div class="font-callunasans text-grey text-sm mt-4">\n            {citation}'
+        "          </div>"
+        if citation
+        else ""
+    )
+    return (
+        "<html><body>"
+        '<nav><a href="https://www.thenewatlantis.com/issues/no-87-winter-2027">No. 87 – Winter 2027</a></nav>'
+        f'<div class="container"><div class="block text-center lg:hidden">{aside}</div>'
+        '<div class="text-center"><h1>A Quiet Street</h1></div></div>'
+        '<div class="container"><div class="gutenberg-content"><p>Body.</p></div>'
+        f"{cite}"
+        '<div class="font-callunasans text-grey text-sm mt-4">Header image: A. Photographer</div>'
+        "</div></body></html>"
+    )
+
+
+CITATION = "Ada Quill, “A Quiet Street,” <em>The New Atlantis</em>, Number 86, Fall 2026, pp. 24–41."
+
+
+class TestNewAtlantisPrintPages:
+    """kokoro-reader puts the print pages in each episode's description (Brian,
+    2026-11-10), when the page gives them."""
+
+    def test_pages_come_from_the_print_citation(self):
+        md = NewAtlantisExtractor().extract_metadata(_cited_page(CITATION), URL)
+        assert md["pages"] == "pp. 24–41"
+
+    def test_a_one_page_citation_gives_its_page(self):
+        page = _cited_page(CITATION.replace("pp. 24–41", "p. 48"))
+        assert NewAtlantisExtractor().extract_metadata(page, URL)["pages"] == "p. 48"
+
+    def test_a_double_issue_citation_gives_its_pages(self):
+        page = _cited_page(
+            "Ada Quill, “A Quiet Street,” <em>The New Atlantis</em>, "
+            "Number 43, Summer/Fall 2014, pp. 3–19.",
+            slug="no-43-summerfall-2014",
+        )
+        assert NewAtlantisExtractor().extract_metadata(page, URL)["pages"] == "pp. 3–19"
+
+    def test_a_page_without_a_citation_has_no_pages(self):
+        md = NewAtlantisExtractor().extract_metadata(_cited_page(None), URL)
+        assert md["issue_number"] == "86"
+        assert "pages" not in md
+
+    def test_a_citation_naming_another_issue_is_ignored(self):
+        page = _cited_page(CITATION.replace("Number 86", "Number 85"))
+        assert "pages" not in NewAtlantisExtractor().extract_metadata(page, URL)
+
+    def test_a_piece_without_an_edition_has_no_pages(self):
+        md = NewAtlantisExtractor().extract_metadata(_cited_page(CITATION, slug=None), URL)
+        assert "issue_number" not in md
+        assert "pages" not in md

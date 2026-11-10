@@ -330,3 +330,28 @@ def test_metadata_json_omits_the_edition_of_a_web_only_piece(capsys):
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+def test_metadata_json_carries_the_pages_and_the_yaml_header_does_not(capsys):
+    # kokoro-reader reads "pages" from --json for the episode description; the YAML
+    # header for Brian's notes keeps its keys.
+    page = GRAPH_PAGE.replace(
+        '<div class="gutenberg-content"><p>Body.</p></div>',
+        '<div class="gutenberg-content"><p>Body.</p></div>'
+        '<div class="font-callunasans text-grey text-sm mt-4">Ada Quill, “Zoning Alone,” '
+        "<em>The New Atlantis</em>, Number 86, Fall 2026, pp. 24–41.</div>",
+    )
+    assert page != GRAPH_PAGE
+    with (
+        patch.object(article_assistant, "fetch_article_content", return_value=page),
+        patch.object(sys, "argv", ["article_assistant.py", "metadata", URL, "--json"]),
+    ):
+        article_assistant.main()
+    assert json.loads(capsys.readouterr().out)["pages"] == "pp. 24–41"
+    with (
+        patch.object(article_assistant, "fetch_article_content", return_value=page),
+        patch.object(sys, "argv", ["article_assistant.py", "metadata", URL]),
+    ):
+        article_assistant.main()
+    out = capsys.readouterr().out
+    assert "pp. 24" not in out and "pages" not in out

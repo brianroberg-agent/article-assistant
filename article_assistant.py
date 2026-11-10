@@ -196,6 +196,29 @@ ISSUE_SLUG_RE = re.compile(
 )
 
 
+_CITATION = re.compile(
+    r"The New Atlantis\s*,\s*Number\s+(\d+)\s*,[^,]+,\s*(pp?)\.\s*(\d+)(?:\s*([–-])\s*(\d+))?\s*\."
+)
+
+
+def _print_pages(soup, issue_number):
+    """The article's pages in the print edition ("pp. 24–41", "p. 48"), or None.
+
+    A print article ends with a citation line: "Ada Quill, “Title,” The New
+    Atlantis, Number 86, Fall 2026, pp. 24–41." Web-only pieces and online-only
+    interviews have none. Only a citation naming the article's own edition
+    counts, so a page without an edition has no pages.
+    """
+    if not issue_number:
+        return None
+    text = re.sub(r"\s+", " ", soup.get_text(" "))
+    for m in _CITATION.finditer(text):
+        if m.group(1) == issue_number:
+            prefix, first, dash, last = m.group(2, 3, 4, 5)
+            return f"{prefix}. {first}" + (f"{dash}{last}" if last else "")
+    return None
+
+
 def _edition_from_header(soup):
     """The article's own edition, read from the header aside beside its h1.
 
@@ -369,6 +392,10 @@ class NewAtlantisExtractor(MetadataExtractor):
                                 metadata["issue_number"] = str(inferred_number)
                                 metadata["issue_season"] = f"{season} {year}"
                             break
+
+        pages = _print_pages(soup, metadata.get("issue_number"))
+        if pages:
+            metadata["pages"] = pages
 
         # No datePublished: use the start of the edition's season
         if not metadata.get("date_published") and metadata.get("issue_season"):
