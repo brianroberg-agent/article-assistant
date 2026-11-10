@@ -594,6 +594,14 @@ class TestNewAtlantisPrintPages:
         )
         assert NewAtlantisExtractor().extract_metadata(page, URL)["pages"] == "pp. 3–19"
 
+    def test_a_citation_with_its_online_date_gives_its_pages(self):
+        # A print article first published online cites both (review F1, live on
+        # 2026-11-10): "…, pp. 115–121; TheNewAtlantis.com, April 16, 2026."
+        page = _cited_page(
+            CITATION.replace("pp. 24–41.", "pp. 24–41; TheNewAtlantis.com, April 16, 2026.")
+        )
+        assert NewAtlantisExtractor().extract_metadata(page, URL)["pages"] == "pp. 24–41"
+
     def test_a_page_without_a_citation_has_no_pages(self):
         md = NewAtlantisExtractor().extract_metadata(_cited_page(None), URL)
         assert md["issue_number"] == "86"

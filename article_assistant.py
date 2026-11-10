@@ -197,7 +197,7 @@ ISSUE_SLUG_RE = re.compile(
 
 
 _CITATION = re.compile(
-    r"The New Atlantis\s*,\s*Number\s+(\d+)\s*,[^,]+,\s*(pp?)\.\s*(\d+)(?:\s*([–-])\s*(\d+))?\s*\."
+    r"The New Atlantis\s*,\s*Number\s+(\d+)\s*,[^,]+,\s*(pp?)\.\s*(\d+)(?:\s*([–-])\s*(\d+))?\s*[.;]"
 )
 
 
@@ -205,7 +205,8 @@ def _print_pages(soup, issue_number):
     """The article's pages in the print edition ("pp. 24–41", "p. 48"), or None.
 
     A print article ends with a citation line: "Ada Quill, “Title,” The New
-    Atlantis, Number 86, Fall 2026, pp. 24–41." Web-only pieces and online-only
+    Atlantis, Number 86, Fall 2026, pp. 24–41." (one first published online goes on
+    "; TheNewAtlantis.com, <date>."). Web-only pieces and online-only
     interviews have none. Only a citation naming the article's own edition
     counts, so a page without an edition has no pages.
     """
